@@ -1,0 +1,41 @@
+name: afraz_flow
+description: "Afraz Flow — multi-tenant business management, POS and courier tracking."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  get: ^4.7.3
+  supabase_flutter: ^2.15.4
+  shared_preferences: ^2.5.3
+  intl: ^0.20.2
+  mobile_scanner: ^7.5.0
+  fl_chart: 0.71.0
+  pdf: ^3.11.3
+  printing: ^5.14.3
+  window_manager: ^0.5.2
+  uuid: ^4.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
