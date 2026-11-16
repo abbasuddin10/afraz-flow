@@ -31,7 +31,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Replace YOUR_USERNAME and afraz-flow with your GitHub user/org and repo name.
       - name: Build web (release)
         run: >
           flutter build web --release
