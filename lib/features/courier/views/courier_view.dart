@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_widgets.dart';
@@ -159,7 +160,11 @@ class _CourierViewState extends State<CourierView> {
 
   Widget _buildContent(BuildContext context, bool wide) {
     return RefreshIndicator(
-      onRefresh: () => controller.load(silent: true),
+      onRefresh: () async {
+        // Pull-to-refresh always re-fetches from Supabase.
+        Get.find<DataCache>().expireAll();
+        await controller.load(silent: true);
+      },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(

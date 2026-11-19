@@ -184,8 +184,11 @@ class _NotificationSheet extends StatelessWidget {
     await controller.markRead(notification);
     if (!context.mounted) return;
     Navigator.of(context).pop();
+    final navigation = Get.find<NavigationController>();
     if (notification.isBriefing) {
-      Get.find<NavigationController>().go(AppSection.briefing);
+      navigation.go(AppSection.briefing);
+    } else if (notification.isLowStock) {
+      navigation.go(AppSection.inventory);
     }
   }
 
@@ -215,7 +218,16 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unread = notification.isUnread;
-    final accent = notification.isBriefing ? AppColors.teal : AppColors.blue;
+    final accent = notification.isBriefing
+        ? AppColors.teal
+        : notification.isLowStock
+        ? AppColors.amber
+        : AppColors.blue;
+    final icon = notification.isBriefing
+        ? Icons.insights_rounded
+        : notification.isLowStock
+        ? Icons.inventory_2_outlined
+        : Icons.notifications_active_outlined;
 
     return InkWell(
       onTap: onTap,
@@ -233,9 +245,7 @@ class _NotificationTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(
-                notification.isBriefing
-                    ? Icons.insights_rounded
-                    : Icons.notifications_active_outlined,
+                icon,
                 size: 18,
                 color: accent,
               ),
@@ -292,7 +302,7 @@ class _NotificationTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (notification.isBriefing)
+            if (notification.isAlert)
               const Padding(
                 padding: EdgeInsets.only(top: 10, left: 4),
                 child: Icon(Icons.chevron_right_rounded, size: 18),

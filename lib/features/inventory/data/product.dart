@@ -84,6 +84,7 @@ class Product {
     int? lowStockThreshold,
     bool? isActive,
     String? imageUrl,
+    bool clearImage = false,
   }) => Product(
     id: id,
     tenantId: tenantId,
@@ -97,7 +98,7 @@ class Product {
     stockQty: stockQty ?? this.stockQty,
     lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
     isActive: isActive ?? this.isActive,
-    imageUrl: imageUrl ?? this.imageUrl,
+    imageUrl: clearImage ? null : (imageUrl ?? this.imageUrl),
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

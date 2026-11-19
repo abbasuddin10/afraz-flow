@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -19,12 +20,14 @@ class ScannerView extends StatefulWidget {
   State<ScannerView> createState() => _ScannerViewState();
 }
 
-class _ScannerViewState extends State<ScannerView> {
+class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
   MobileScannerController? _controller;
   final TextEditingController _manual = TextEditingController();
   final FocusNode _manualFocus = FocusNode();
 
   bool _handled = false;
+  bool _starting = false;
+  bool _disposed = false;
   String? _lastError;
 
   bool get _cameraSupported {
@@ -40,21 +43,112 @@ class _ScannerViewState extends State<ScannerView> {
   @override
   void initState() {
     super.initState();
-    if (_cameraSupported) {
-      _controller = MobileScannerController(
-        detectionSpeed: DetectionSpeed.noDuplicates,
-        formats: [BarcodeFormat.all],
-        autoStart: true,
-      );
+    if (!_cameraSupported) return;
+    _controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: [BarcodeFormat.all],
+      autoStart: false,
+    );
+    if (kIsWeb) {
+      MobileScannerPlatform.instance.setWebBarcodeReader(WebBarcodeReader.auto);
+    }
+    WidgetsBinding.instance.addObserver(this);
+    // Wait until the MobileScanner widget is mounted and has attached its
+    // controller before starting. Starting in `initState` can race the widget
+    // and throw `controllerNotAttached`, which leaves a black preview.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_disposed) unawaited(_startController());
+    });
+  }
+
+  Future<void> _startController() async {
+    final controller = _controller;
+    if (controller == null || _disposed || _handled || _starting) return;
+    if (controller.value.isRunning || controller.value.isStarting) return;
+    _starting = true;
+    if (mounted && _lastError != null) {
+      setState(() => _lastError = null);
+    }
+    try {
+      await controller.start();
+    } catch (error) {
+      if (_disposed || !mounted) return;
+      setState(() {
+        _lastError = error is MobileScannerException
+            ? (error.errorDetails?.message ?? error.errorCode.message)
+            : error.toString();
+      });
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _stopController() async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.stop();
+    } catch (_) {
+      // The camera may not have finished starting yet.
+    }
+  }
+
+  Future<void> _toggleTorch() async {
+    try {
+      await _controller?.toggleTorch();
+    } catch (_) {
+      // Ignore taps while the camera is still initialising.
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    try {
+      await _controller?.switchCamera();
+    } catch (_) {
+      // Ignore taps while the camera is still initialising.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_controller == null || _handled) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_startController());
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        unawaited(_stopController());
+      case AppLifecycleState.detached:
+        break;
     }
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) {
+      unawaited(_releaseController(controller));
+    }
     _manual.dispose();
     _manualFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _releaseController(MobileScannerController controller) async {
+    try {
+      await controller.stop();
+    } catch (_) {
+      // Ignore stop errors during disposal.
+    }
+    try {
+      await controller.dispose();
+    } catch (_) {
+      // The plugin may already have released the controller.
+    }
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -66,6 +160,12 @@ class _ScannerViewState extends State<ScannerView> {
         return;
       }
     }
+  }
+
+  void _onDetectError(Object error, StackTrace stackTrace) {
+    // Detection errors are usually transient (a blurry frame); keep scanning
+    // instead of replacing the preview with an error screen.
+    debugPrint('Scanner detection error: $error');
   }
 
   Future<void> _submit(String value) async {
@@ -105,22 +205,32 @@ class _ScannerViewState extends State<ScannerView> {
             ValueListenableBuilder<MobileScannerState>(
               valueListenable: _controller!,
               builder: (context, state, _) {
+                final running = state.isRunning;
                 final torchOn = state.torchState == TorchState.on;
-                return IconButton(
-                  tooltip: torchOn ? 'Turn torch off' : 'Turn torch on',
-                  onPressed: state.torchState == TorchState.unavailable
-                      ? null
-                      : () => _controller!.toggleTorch(),
-                  icon: Icon(
-                    torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-                  ),
+                final torchAvailable =
+                    state.torchState != TorchState.unavailable;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: torchOn ? 'Turn torch off' : 'Turn torch on',
+                      onPressed: running && torchAvailable
+                          ? _toggleTorch
+                          : null,
+                      icon: Icon(
+                        torchOn
+                            ? Icons.flash_on_rounded
+                            : Icons.flash_off_rounded,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Switch camera',
+                      onPressed: running ? _switchCamera : null,
+                      icon: const Icon(Icons.cameraswitch_outlined),
+                    ),
+                  ],
                 );
               },
-            ),
-            IconButton(
-              tooltip: 'Switch camera',
-              onPressed: () => _controller!.switchCamera(),
-              icon: const Icon(Icons.cameraswitch_outlined),
             ),
           ],
           const SizedBox(width: 4),
@@ -133,94 +243,171 @@ class _ScannerViewState extends State<ScannerView> {
   }
 
   Widget _buildCameraBody() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        MobileScanner(
-          controller: _controller,
-          onDetect: _onDetect,
-          errorBuilder: (context, error) {
-            _lastError = error.errorDetails?.message;
-            return _buildCameraError();
-          },
-        ),
-        const IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0x99000000),
-                  Color(0x00000000),
-                  Color(0x00000000),
-                  Color(0xCC000000),
-                ],
-                stops: [0, 0.22, 0.62, 1],
+    return ValueListenableBuilder<MobileScannerState>(
+      valueListenable: _controller!,
+      builder: (context, state, _) {
+        final controllerError = state.error;
+        final error =
+            _lastError ??
+            (controllerError == null
+                ? null
+                : controllerError.errorDetails?.message ??
+                      controllerError.errorCode.message);
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            MobileScanner(
+              controller: _controller,
+              onDetect: _onDetect,
+              onDetectError: _onDetectError,
+              placeholderBuilder: (_) => _buildStartingCamera(),
+              errorBuilder: (context, error) => _buildCameraError(
+                error.errorDetails?.message ?? error.errorCode.message,
               ),
             ),
-          ),
-        ),
-        Center(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final maxSize = constraints.biggest.shortestSide;
-              final size = (maxSize * 0.7).clamp(200.0, 320.0);
-              return _ScanFrame(size: size);
-            },
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Point the camera at a barcode or QR code',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+            if (error != null)
+              Positioned.fill(child: _buildCameraError(error))
+            else if (!state.isInitialized)
+              Positioned.fill(child: _buildStartingCamera())
+            else ...[
+              const IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x99000000),
+                        Color(0x00000000),
+                        Color(0x00000000),
+                        Color(0xCC000000),
+                      ],
+                      stops: [0, 0.22, 0.62, 1],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Product SKUs, invoice codes and courier tracking numbers.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _enterManually,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
-                    label: Text('Enter code manually'.tr),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
-      ],
+              Center(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final maxSize = constraints.biggest.shortestSide;
+                    final size = (maxSize * 0.7).clamp(200.0, 320.0);
+                    return _ScanFrame(size: size);
+                  },
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Point the camera at a barcode or QR code',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Product SKUs, invoice codes and courier tracking '
+                          'numbers.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _enterManually,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          icon: const Icon(
+                            Icons.keyboard_alt_outlined,
+                            size: 18,
+                          ),
+                          label: Text('Enter code manually'.tr),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildCameraError() {
+  Widget _buildStartingCamera() {
+    return ColoredBox(
+      color: AppColors.navyDeep,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 30,
+                height: 30,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.teal,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Starting camera…',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'If the camera does not start, enter the code manually.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: _enterManually,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
+                ),
+                icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
+                label: Text('Enter code manually'.tr),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraError(String? message) {
     return ColoredBox(
       color: AppColors.navyDeep,
       child: Center(
@@ -253,8 +440,8 @@ class _ScannerViewState extends State<ScannerView> {
               ),
               const SizedBox(height: 6),
               Text(
-                _lastError?.isNotEmpty == true
-                    ? _lastError!
+                message?.isNotEmpty == true
+                    ? message!
                     : 'Allow camera access for Afraz Flow in your device '
                           'settings, or enter the code manually to continue.',
                 textAlign: TextAlign.center,
@@ -265,10 +452,28 @@ class _ScannerViewState extends State<ScannerView> {
                 ),
               ),
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: _enterManually,
-                icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
-                label: Text('Enter code manually'.tr),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _starting ? null : _startController,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Try again'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _enterManually,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
+                    label: Text('Enter code manually'.tr),
+                  ),
+                ],
               ),
             ],
           ),
@@ -451,9 +656,7 @@ class _ScanFrameState extends State<_ScanFrame>
       height: widget.size,
       child: Stack(
         children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _FramePainter()),
-          ),
+          Positioned.fill(child: CustomPaint(painter: _FramePainter())),
           AnimatedBuilder(
             animation: _animation,
             builder: (context, _) {

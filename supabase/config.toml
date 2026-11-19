@@ -1,0 +1,20 @@
+# Supabase CLI project configuration.
+# The project is already linked (supabase/.temp/project-ref = jryuyaehhpfbxpvrzdeg).
+
+project_id = "jryuyaehhpfbxpvrzdeg"
+
+[functions.ai-assistant]
+verify_jwt = true
+
+[functions.daily-briefing]
+verify_jwt = true
+
+[functions.invite-staff]
+verify_jwt = true
+
+# notify-push is called by the Postgres pg_net trigger, not by a logged-in
+# Supabase user. The trigger authenticates with PUSH_WEBHOOK_SECRET, which the
+# function validates itself. Supabase's own JWT gate must therefore be off,
+# otherwise every webhook call is rejected with 401 before reaching the code.
+[functions.notify-push]
+verify_jwt = false

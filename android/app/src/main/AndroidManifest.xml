@@ -1,13 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Real-time push notifications (Firebase Cloud Messaging). Required on
+         Android 13+; the app asks for the permission at runtime too. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:label="Afraz Flow"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="false">
         <activity
@@ -27,10 +30,31 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Matches the `click_action` sent by the notify-push Edge
+                 Function so tapping a background push opens this activity
+                 (and firebase_messaging can read the initial message). -->
+            <intent-filter>
+                <action android:name="FLUTTER_NOTIFICATION_CLICK"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Default FCM notification channel when no channel is specified by
+             the sender; the Dart side creates 'afraz_flow_alerts' as well. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="afraz_flow_alerts" />
+        <!-- Branded push banner for messages FCM displays itself (app in the
+             background/terminated): the app logo as a white status-bar
+             silhouette plus the brand accent colour. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_afraz_flow" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/afraz_brand_navy" />
     </application>
     <queries>
         <intent>

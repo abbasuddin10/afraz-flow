@@ -92,6 +92,10 @@ class StaffRepository {
       }
     }
 
+    final temporaryPassword = (password == null || password.trim().length < 8)
+        ? 'Welcome123'
+        : password.trim();
+
     final existingProfiles = await _store.select(
       'profiles',
       eq: {'email': normalized},
@@ -115,13 +119,30 @@ class StaffRepository {
         'is_active': true,
         'created_at': toIso(DateTime.now()),
       });
+      // Make sure the existing account has a usable local demo password.
+      final existingAccounts = await _store.select(
+        'demo_accounts',
+        eq: {'user_id': userId},
+        limit: 1,
+      );
+      if (existingAccounts.isEmpty) {
+        await _store.insert('demo_accounts', {
+          'id': _uuid.v4(),
+          'user_id': userId,
+          'email': normalized,
+          'password': temporaryPassword,
+          'created_at': toIso(DateTime.now()),
+        });
+      } else if (password != null && password.trim().length >= 8) {
+        await _store.update('demo_accounts', asString(existingAccounts.first['id']), {
+          'password': temporaryPassword,
+          'email': normalized,
+        });
+      }
       return;
     }
 
     final userId = _uuid.v4();
-    final temporaryPassword = (password == null || password.length < 8)
-        ? 'Welcome123'
-        : password;
     final now = DateTime.now();
     await _store.insert(
       'profiles',

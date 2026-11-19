@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 
 import '../../../core/services/app_services.dart';
+import '../../../core/services/push_notification_service.dart';
 import '../../../core/utils/app_failure.dart';
 import '../../../core/widgets/feedback.dart';
 import '../data/app_notification.dart';
@@ -21,6 +22,10 @@ class NotificationController extends GetxController {
     if (_session.isAuthenticated) {
       refresh();
       _startRealtime();
+      // Attach this device's FCM token now that the session context exists.
+      if (Get.isRegistered<PushNotificationService>()) {
+        Get.find<PushNotificationService>().onSessionReady();
+      }
     }
   }
 

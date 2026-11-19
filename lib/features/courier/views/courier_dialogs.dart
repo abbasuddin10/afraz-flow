@@ -285,7 +285,11 @@ class _CourierTrackingDialogState extends State<CourierTrackingDialog> {
   late final TextEditingController _tracking = TextEditingController(
     text: widget.order.trackingNumber ?? '',
   );
-  late String _partner = widget.order.courierPartner;
+  late String _partner = CourierOrder.partners.contains(
+    widget.order.courierPartner,
+  )
+      ? widget.order.courierPartner
+      : 'Other';
   bool _saving = false;
 
   @override

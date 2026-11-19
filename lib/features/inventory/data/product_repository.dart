@@ -5,6 +5,7 @@ import '../../../../core/services/app_services.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/json_helpers.dart';
+import '../../notifications/data/low_stock_notifier.dart';
 import 'product.dart';
 
 class ProductRepository {
@@ -94,7 +95,9 @@ class ProductRepository {
       }
     }
     final row = await _store.insert('products', product.toJson());
-    return Product.fromJson(row);
+    final created = Product.fromJson(row);
+    await LowStockNotifier.notify(_store, _session, created);
+    return created;
   }
 
   Future<Product> update(Product product) async {
@@ -110,7 +113,9 @@ class ProductRepository {
       throw const AppFailure('A product with this SKU already exists.');
     }
     final row = await _store.update('products', product.id, product.toJson());
-    return Product.fromJson(row);
+    final updated = Product.fromJson(row);
+    await LowStockNotifier.notify(_store, _session, updated);
+    return updated;
   }
 
   Future<void> archive(Product product) async {
@@ -173,6 +178,7 @@ class ProductRepository {
         createdAt: DateTime.now(),
       ).toJson(),
     );
+    await LowStockNotifier.notify(_store, _session, updated);
     return updated;
   }
 

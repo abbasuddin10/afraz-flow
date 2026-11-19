@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../../../../core/data/cache/data_cache.dart';
 import '../../../../core/services/app_services.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../../core/widgets/feedback.dart';
@@ -225,7 +226,11 @@ class CourierDetailController extends GetxController {
     }
   }
 
-  Future<void> refreshQuietly() => load();
+  Future<void> refreshQuietly() async {
+    // Pull-to-refresh on the detail view: force a fresh read.
+    if (Get.isRegistered<DataCache>()) Get.find<DataCache>().expireAll();
+    await load();
+  }
 
   Future<bool> changeStatus(CourierStatus status, {String? note}) async {
     final current = order.value;

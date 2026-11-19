@@ -79,6 +79,7 @@ class InventoryController extends GetxController {
     required double salePrice,
     required double stockQty,
     required int lowStockThreshold,
+    String? imageUrl,
   }) async {
     saving.value = true;
     try {
@@ -100,6 +101,7 @@ class InventoryController extends GetxController {
               salePrice: salePrice,
               stockQty: stockQty,
               lowStockThreshold: lowStockThreshold,
+              imageUrl: imageUrl,
               isActive: true,
               createdAt: now,
               updatedAt: now,
@@ -113,6 +115,8 @@ class InventoryController extends GetxController {
               costPrice: costPrice,
               salePrice: salePrice,
               lowStockThreshold: lowStockThreshold,
+              imageUrl: imageUrl,
+              clearImage: imageUrl == null,
             );
       if (existing == null) {
         await _repository.create(product);

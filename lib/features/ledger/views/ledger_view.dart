@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../core/models/account.dart';
 import '../../../core/models/ledger_entry.dart';
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/services/app_services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
@@ -256,7 +257,11 @@ class _CashBookTab extends StatelessWidget {
     final entries = controller.cashbook;
     final today = controller.todayEntries;
     return RefreshIndicator(
-      onRefresh: () => controller.load(silent: true),
+      onRefresh: () async {
+        // Pull-to-refresh always re-fetches from Supabase.
+        Get.find<DataCache>().expireAll();
+        await controller.load(silent: true);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 20),
@@ -570,7 +575,11 @@ class _AccountsTab extends StatelessWidget {
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: () => controller.load(silent: true),
+                  onRefresh: () async {
+        // Pull-to-refresh always re-fetches from Supabase.
+        Get.find<DataCache>().expireAll();
+        await controller.load(silent: true);
+      },
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.only(bottom: 20),
@@ -775,7 +784,11 @@ class _ExpensesTab extends StatelessWidget {
     final byCategory = controller.expensesByCategory.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return RefreshIndicator(
-      onRefresh: () => controller.load(silent: true),
+      onRefresh: () async {
+        // Pull-to-refresh always re-fetches from Supabase.
+        Get.find<DataCache>().expireAll();
+        await controller.load(silent: true);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 20),

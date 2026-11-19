@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "533768226388",
+    "project_id": "afraz-flow",
+    "storage_bucket": "afraz-flow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:533768226388:android:f6f7bd5d3d9e4f17f90fc1",
+        "android_client_info": {
+          "package_name": "com.afrazstudio.flow"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3vFZQdT3NudNtTRgURM25g5ooiEX5Vf0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

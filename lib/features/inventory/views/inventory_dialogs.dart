@@ -1,11 +1,21 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/data/backend_mode.dart';
+import '../../../core/services/app_services.dart';
+import '../../../core/services/image_compression_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/feedback.dart';
 import '../controllers/inventory_controller.dart';
 import '../data/product.dart';
 
@@ -31,13 +41,14 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   late final TextEditingController _price;
   late final TextEditingController _stock;
   late final TextEditingController _threshold;
-
+  Uint8List? _pickedImageBytes;
+  bool _processingImage = false;
+  String? _existingImageUrl;
   bool get _editing => widget.product != null;
 
   List<String> get _unitOptions {
     final options = [...AppConfig.units];
-    if (_unitValue.trim().isNotEmpty &&
-        !options.contains(_unitValue.trim())) {
+    if (_unitValue.trim().isNotEmpty && !options.contains(_unitValue.trim())) {
       options.insert(0, _unitValue.trim());
     }
     if (options.isEmpty) options.add('pcs');
@@ -65,6 +76,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     _threshold = TextEditingController(
       text: '${product?.lowStockThreshold ?? 5}',
     );
+    _existingImageUrl = product?.imageUrl;
   }
 
   String _number(double value) =>
@@ -84,8 +96,97 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     super.dispose();
   }
 
+  Future<void> _pickImage() async {
+    if (_processingImage) return;
+    try {
+      final file = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 92,
+      );
+      if (file == null) return;
+      if (mounted) setState(() => _processingImage = true);
+      final original = await file.readAsBytes();
+      final compressed = await ImageCompressionService.compress(original);
+      if (!mounted) return;
+      setState(() {
+        _pickedImageBytes = compressed.bytes;
+        _processingImage = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _processingImage = false);
+      showAppMessage(
+        'Could not prepare that image. Try a JPG or PNG photo. ($error)',
+        error: true,
+      );
+    }
+  }
+
+  void _removeImage() {
+    setState(() {
+      _pickedImageBytes = null;
+      _processingImage = false;
+      _existingImageUrl = null;
+    });
+  }
+
+  Future<String?> _uploadImage(Uint8List bytes) async {
+    try {
+      const contentType = ImageCompressionService.contentType;
+      const ext = ImageCompressionService.extension;
+      // Demo mode never touches the cloud. Persisting a compact data URL keeps
+      // product photos working on-device without requiring a Supabase session.
+      if (Get.find<BackendMode>().isDemo) {
+        return 'data:$contentType;base64,${base64Encode(bytes)}';
+      }
+      final tenantId = Get.find<SessionService>().requireTenantId();
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser == null) {
+        showAppMessage(
+          'Sign in to Supabase before uploading product images.',
+          error: true,
+        );
+        return null;
+      }
+      final path = '$tenantId/${const Uuid().v4()}.$ext';
+      await client.storage
+          .from('product-images')
+          .uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: contentType,
+              cacheControl: '3600',
+              upsert: true,
+            ),
+          );
+      return client.storage.from('product-images').getPublicUrl(path);
+    } catch (error) {
+      showAppMessage(
+        'Image upload failed. Make sure a public "product-images" bucket '
+        'exists in Supabase Storage. ($error)',
+        error: true,
+      );
+      return null;
+    }
+  }
+
   Future<void> _submit() async {
+    if (_processingImage) {
+      showAppMessage(
+        'Please wait for the image to finish compressing.',
+        error: true,
+      );
+      return;
+    }
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    String? imageUrl = _existingImageUrl;
+    if (_pickedImageBytes != null) {
+      imageUrl = await _uploadImage(_pickedImageBytes!);
+      if (imageUrl == null) return;
+    }
     final saved = await _controller.saveProduct(
       existing: widget.product,
       name: _name.text.trim(),
@@ -99,8 +200,189 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
           ? (widget.product?.stockQty ?? 0)
           : Formats.parseAmount(_stock.text),
       lowStockThreshold: int.tryParse(_threshold.text.trim()) ?? 5,
+      imageUrl: imageUrl,
     );
     if (saved && mounted) Navigator.of(context).pop(true);
+  }
+
+  Widget _buildImageField(BuildContext context) {
+    final theme = Theme.of(context);
+    final existing = _existingImageUrl?.trim();
+    final hasImage =
+        _pickedImageBytes != null || (existing != null && existing.isNotEmpty);
+    final corners = BorderRadius.circular(14);
+
+    Widget preview() {
+      if (_processingImage) {
+        return const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+      if (_pickedImageBytes != null) {
+        return Image.memory(
+          _pickedImageBytes!,
+          width: 76,
+          height: 76,
+          fit: BoxFit.cover,
+        );
+      }
+      if (existing != null && existing.isNotEmpty) {
+        return Image.network(
+          existing,
+          width: 76,
+          height: 76,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => const Icon(Icons.image_outlined, size: 30),
+        );
+      }
+      return Icon(
+        Icons.add_photo_alternate_outlined,
+        size: 30,
+        color: theme.colorScheme.onSurfaceVariant,
+      );
+    }
+
+    final imageKb = _pickedImageBytes == null
+        ? null
+        : (_pickedImageBytes!.length / 1024).round();
+    final statusLabel = _processingImage
+        ? 'Compressing…'
+        : imageKb != null
+        ? '$imageKb KB'
+        : 'Optional';
+    final statusColor = _processingImage || imageKb != null
+        ? AppColors.green
+        : theme.colorScheme.primary;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _pickImage,
+        borderRadius: corners,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: corners,
+            border: Border.all(
+              color: hasImage
+                  ? theme.colorScheme.primary.withValues(alpha: 0.45)
+                  : theme.colorScheme.outlineVariant,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 76,
+                height: 76,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: preview(),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Product image',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: statusColor,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _processingImage
+                          ? 'Resizing and compressing your photo on this device…'
+                          : hasImage
+                          ? 'Tap here or use “Change image” to replace this photo.'
+                          : 'Add a photo to show it on the Sell page, stock list and dashboard.',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _processingImage ? null : _pickImage,
+                          icon: const Icon(Icons.upload_rounded, size: 16),
+                          label: Text(
+                            _processingImage
+                                ? 'Compressing…'
+                                : hasImage
+                                ? 'Change image'
+                                : 'Choose image',
+                          ),
+                        ),
+                        if (hasImage)
+                          TextButton.icon(
+                            onPressed: _processingImage ? null : _removeImage,
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 16,
+                            ),
+                            label: const Text('Remove'),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Photos are automatically resized to 512px and compressed '
+                      'below 100 KB before upload.',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.8,
+                        ),
+                        fontSize: 9.5,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -115,6 +397,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildImageField(context),
+                  const SizedBox(height: 14),
                   TextFormField(
                     controller: _name,
                     textCapitalization: TextCapitalization.words,
@@ -170,9 +454,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                               ? _unitValue
                               : null,
                           isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Unit',
-                          ),
+                          decoration: const InputDecoration(labelText: 'Unit'),
                           items: [
                             for (final unit in _unitOptions)
                               DropdownMenuItem(value: unit, child: Text(unit)),
@@ -232,10 +514,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                           ),
                           decoration: const InputDecoration(
                             labelText: 'Sale price',
-                            prefixIcon: Icon(
-                              Icons.sell_outlined,
-                              size: 20,
-                            ),
+                            prefixIcon: Icon(Icons.sell_outlined, size: 20),
                           ),
                         ),
                       ),
@@ -367,7 +646,11 @@ class _StockAdjustDialogState extends State<StockAdjustDialog> {
                     ),
                     child: Row(
                       children: [
-                        InitialsAvatar(name: widget.product.name, size: 40),
+                        ProductThumbnail(
+                          name: widget.product.name,
+                          imageUrl: widget.product.imageUrl,
+                          size: 40,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -395,7 +678,7 @@ class _StockAdjustDialogState extends State<StockAdjustDialog> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<StockMovementType>(
                     value: _type,
-                     isExpanded: true,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Movement type',
                       prefixIcon: Icon(Icons.swap_vert_rounded, size: 20),
@@ -484,11 +767,12 @@ class StockMovementsSheet extends StatelessWidget {
                         ),
                         Text(
                           '${product.name} · ${product.stockLabel} on hand',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
@@ -529,8 +813,10 @@ class StockMovementsSheet extends StatelessWidget {
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final movement = movements[index];
-                      final incoming = movement.type != StockMovementType.outbound;
-                      final color = movement.type == StockMovementType.adjustment
+                      final incoming =
+                          movement.type != StockMovementType.outbound;
+                      final color =
+                          movement.type == StockMovementType.adjustment
                           ? AppColors.blue
                           : incoming
                           ? AppColors.green
@@ -570,10 +856,13 @@ class StockMovementsSheet extends StatelessWidget {
                                   ),
                                   Text(
                                     [
-                                      if (movement.note.isNotEmpty) movement.note,
-                                      if (movement.reference != null)
-                                        movement.reference!,
-                                    ].where((value) => value.isNotEmpty).join(' · '),
+                                          if (movement.note.isNotEmpty)
+                                            movement.note,
+                                          if (movement.reference != null)
+                                            movement.reference!,
+                                        ]
+                                        .where((value) => value.isNotEmpty)
+                                        .join(' · '),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context)
@@ -603,11 +892,14 @@ class StockMovementsSheet extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              '${incoming && movement.type != StockMovementType.adjustment ? '+' : movement.type == StockMovementType.outbound ? '−' : ''}${Formats.number(movement.quantity, decimals: movement.quantity % 1 == 0 ? 0 : 2)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(color: color),
+                              '${incoming && movement.type != StockMovementType.adjustment
+                                  ? '+'
+                                  : movement.type == StockMovementType.outbound
+                                  ? '−'
+                                  : ''}${Formats.number(movement.quantity, decimals: movement.quantity % 1 == 0 ? 0 : 2)}',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleSmall?.copyWith(color: color),
                             ),
                           ],
                         ),

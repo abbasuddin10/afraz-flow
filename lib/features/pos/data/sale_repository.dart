@@ -8,6 +8,7 @@ import '../../../../core/utils/app_failure.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/json_helpers.dart';
 import '../../inventory/data/product.dart';
+import '../../notifications/data/low_stock_notifier.dart';
 import '../data/sale.dart';
 
 class SaleRepository {
@@ -142,8 +143,11 @@ class SaleRepository {
     for (final item in items) {
       await _store.insert('sale_items', item.toJson());
       final product = stockBefore[item.productId]!;
+      final soldOut = product.copyWith(
+        stockQty: product.stockQty - item.quantity,
+      );
       await _store.update('products', product.id, {
-        'stock_qty': product.stockQty - item.quantity,
+        'stock_qty': soldOut.stockQty,
         'updated_at': toIso(now),
       });
       await _store.insert(
@@ -160,6 +164,9 @@ class SaleRepository {
           createdAt: now,
         ).toJson(),
       );
+      // A sale can push a product under its minimum stock level; raise the
+      // low stock alert feed entry (cloud mode relies on the DB trigger).
+      await LowStockNotifier.notify(_store, _session, soldOut);
     }
 
     if (accountId != null && due > 0.009) {

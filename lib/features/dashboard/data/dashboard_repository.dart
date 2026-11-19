@@ -69,28 +69,78 @@ class DashboardRepository {
     final salesCount = periodSales.length;
 
     final chart = <ChartPoint>[];
-    for (var offset = period.days - 1; offset >= 0; offset--) {
-      final day = DateTime(now.year, now.month, now.day)
-          .subtract(Duration(days: offset));
-      final next = day.add(const Duration(days: 1));
-      final dayRevenue = periodSales
-          .where(
-            (sale) =>
-                !sale.createdAt.isBefore(day) && sale.createdAt.isBefore(next),
-          )
-          .fold<double>(0, (sum, sale) => sum + sale.total);
-      final dayExpenses = periodExpenses
-          .where(
-            (expense) =>
-                !expense.expenseDate.isBefore(day) &&
-                expense.expenseDate.isBefore(next),
-          )
-          .fold<double>(0, (sum, expense) => sum + expense.amount);
-      chart.add(
-        ChartPoint(date: day, revenue: dayRevenue, expenses: dayExpenses),
-      );
+    if (period == DashboardPeriod.today) {
+      // Intra-day breakdown: bucket today's transactions into logical time
+      // slots so the Today view renders a meaningful trend line instead of a
+      // single point.
+      const slots = <({int hour, String label, int start, int end})>[
+        (hour: 9, label: '9 AM', start: 0, end: 11),
+        (hour: 12, label: '12 PM', start: 11, end: 14),
+        (hour: 15, label: '3 PM', start: 14, end: 17),
+        (hour: 18, label: '6 PM', start: 17, end: 20),
+        (hour: 21, label: '9 PM', start: 20, end: 24),
+      ];
+      final today = DateTime(now.year, now.month, now.day);
+      for (final slot in slots) {
+        final slotStart = today.add(Duration(hours: slot.start));
+        final slotEnd = today.add(Duration(hours: slot.end));
+        final slotRevenue = periodSales
+            .where(
+              (sale) =>
+                  !sale.createdAt.isBefore(slotStart) &&
+                  sale.createdAt.isBefore(slotEnd),
+            )
+            .fold<double>(0, (sum, sale) => sum + sale.total);
+        final slotExpenses = periodExpenses
+            .where(
+              (expense) =>
+                  !expense.expenseDate.isBefore(slotStart) &&
+                  expense.expenseDate.isBefore(slotEnd),
+            )
+            .fold<double>(0, (sum, expense) => sum + expense.amount);
+        chart.add(
+          ChartPoint(
+            date: today.add(Duration(hours: slot.hour)),
+            revenue: slotRevenue,
+            expenses: slotExpenses,
+            label: slot.label,
+          ),
+        );
+      }
+    } else {
+      for (var offset = period.days - 1; offset >= 0; offset--) {
+        final day = DateTime(now.year, now.month, now.day)
+            .subtract(Duration(days: offset));
+        final next = day.add(const Duration(days: 1));
+        final dayRevenue = periodSales
+            .where(
+              (sale) =>
+                  !sale.createdAt.isBefore(day) && sale.createdAt.isBefore(next),
+            )
+            .fold<double>(0, (sum, sale) => sum + sale.total);
+        final dayExpenses = periodExpenses
+            .where(
+              (expense) =>
+                  !expense.expenseDate.isBefore(day) &&
+                  expense.expenseDate.isBefore(next),
+            )
+            .fold<double>(0, (sum, expense) => sum + expense.amount);
+        chart.add(
+          ChartPoint(date: day, revenue: dayRevenue, expenses: dayExpenses),
+        );
+      }
     }
 
+    final imageById = {
+      for (final product in products)
+        if (product.imageUrl != null && product.imageUrl!.isNotEmpty)
+          product.id: product.imageUrl,
+    };
+    final imageByName = {
+      for (final product in products)
+        if (product.imageUrl != null && product.imageUrl!.isNotEmpty)
+          product.name: product.imageUrl,
+    };
     final productStats = <String, TopProduct>{};
     for (final sale in periodSales) {
       for (final item in sale.items) {
@@ -100,6 +150,10 @@ class DashboardRepository {
           name: item.productName,
           quantity: (existing?.quantity ?? 0) + item.quantity,
           revenue: (existing?.revenue ?? 0) + item.lineTotal,
+          imageUrl:
+              existing?.imageUrl ??
+              imageById[item.productId] ??
+              imageByName[item.productName],
         );
       }
     }

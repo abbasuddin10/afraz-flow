@@ -133,9 +133,9 @@ class _InviteStaffDialogState extends State<InviteStaffDialog> {
                       labelText: 'Temporary password',
                       hintText: 'Optional',
                       helperText:
-                          'Leave empty to use Welcome123. Demo mode stores it '
-                          'locally; remote invites create the account with it '
-                          '(or Welcome123) and send a confirmation email.',
+                          'Leave empty to use Welcome123. The account is created '
+                          'with this password (or Welcome123) and can sign in '
+                          '(or Welcome123) and can sign in immediately.',
                       helperMaxLines: 2,
                       prefixIcon: Icon(Icons.lock_outline_rounded, size: 20),
                     ),
@@ -147,7 +147,7 @@ class _InviteStaffDialogState extends State<InviteStaffDialog> {
           const Divider(height: 1),
           DialogActions(
             cancelLabel: 'Cancel',
-            submitLabel: 'Send invite',
+            submitLabel: 'Create account',
             loading: _saving,
             submitIcon: Icons.person_add_alt_1_rounded,
             onSubmit: _submit,

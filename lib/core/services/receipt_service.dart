@@ -1,4 +1,4 @@
-import 'package:flutter/services.dart';
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -51,14 +51,6 @@ class ReceiptService {
       creator: 'Afraz Flow',
     );
 
-    final logoData = await rootBundle.load('assets/images/app_logo_mark.png');
-    final logo = pw.MemoryImage(
-      logoData.buffer.asUint8List(
-        logoData.offsetInBytes,
-        logoData.lengthInBytes,
-      ),
-    );
-
     const ink = PdfColor.fromInt(0xFF16263D);
     const muted = PdfColor.fromInt(0xFF68788D);
     const border = PdfColor.fromInt(0xFFE2E8F0);
@@ -91,8 +83,6 @@ class ReceiptService {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Image(logo, width: 34, height: 34, fit: pw.BoxFit.cover),
-                pw.SizedBox(width: 10),
                 pw.Expanded(
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,

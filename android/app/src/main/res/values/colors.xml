@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Afraz Flow brand colours, sampled from the launcher logo. -->
+    <color name="afraz_brand_navy">#03265E</color>
+    <color name="afraz_brand_green">#55A91D</color>
+</resources>

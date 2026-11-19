@@ -139,42 +139,55 @@ serve(async (req: Request) => {
       if (users.length < 200) break;
     }
 
-    let invited = false;
+    let created = false;
     // Password used for brand-new accounts. Existing accounts keep their own
     // password unless the admin explicitly supplies a new one below.
     const defaultPassword = "Welcome123";
     const passwordToUse = providedPassword || defaultPassword;
 
     if (!userId) {
-      // Invite by email always sends an email. We then attach a concrete
-      // temporary password so the cashier can sign in after confirming,
-      // instead of relying on a link that only creates a session.
-      const redirectTo = Deno.env.get("APP_URL")?.trim() || undefined;
-      const { data: invite, error: inviteError } = await admin.auth.admin
-        .inviteUserByEmail(email, {
-          data: { full_name: fullName, invited_tenant_id: tenantId, role },
-          redirectTo,
+      // Create the auth account directly with a confirmed email so the staff
+      // member can sign in immediately with the temporary password, without
+      // waiting for (or relying on) an email verification/invite link.
+      const { data: createdUser, error: createError } = await admin.auth.admin
+        .createUser({
+          email,
+          password: passwordToUse,
+          email_confirm: true,
+          user_metadata: {
+            full_name: fullName,
+            invited_tenant_id: tenantId,
+            role,
+          },
         });
-      if (inviteError) {
-        return json({ error: inviteError.message }, 400);
+      if (createError) {
+        return json({ error: createError.message }, 400);
       }
-      userId = invite?.user?.id ?? null;
-      invited = true;
+      userId = createdUser?.user?.id ?? null;
+      created = true;
       if (!userId) {
-        return json({ error: "The invitation could not be created" }, 500);
+        return json({ error: "The account could not be created" }, 500);
       }
-      const { error: passwordError } = await admin.auth.admin.updateUserById(
+      // Some GoTrue versions ignore `email_confirm` on createUser; explicitly
+      // confirm the account as a belt-and-braces measure so it can sign in.
+      const { error: confirmError } = await admin.auth.admin.updateUserById(
         userId,
-        { password: passwordToUse },
+        { email_confirm: true, password: passwordToUse },
       );
-      if (passwordError) {
-        return json({ error: passwordError.message }, 400);
+      if (confirmError) {
+        return json({ error: confirmError.message }, 400);
       }
-    } else if (providedPassword) {
-      // Admin explicitly re-set a password for an existing account.
+    } else {
+      // Make sure an existing (possibly unconfirmed) account can sign in with
+      // the supplied credentials: confirm its email and optionally reset its
+      // password when the admin provides one.
+      const updates: Record<string, unknown> = { email_confirm: true };
+      if (providedPassword) {
+        updates.password = providedPassword;
+      }
       const { error: updateError } = await admin.auth.admin.updateUserById(
         userId,
-        { password: providedPassword },
+        updates,
       );
       if (updateError) {
         return json({ error: updateError.message }, 400);
@@ -231,9 +244,9 @@ serve(async (req: Request) => {
       user_id: userId,
       email,
       role,
-      invited,
-      message: invited
-        ? "Invitation sent"
+      created,
+      message: created
+        ? "Account created"
         : "Existing account added to the team",
     });
   } catch (error) {

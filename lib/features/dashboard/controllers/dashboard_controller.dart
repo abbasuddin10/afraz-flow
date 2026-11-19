@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../../../../core/data/cache/data_cache.dart';
 import '../../../../core/services/app_services.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../data/dashboard_repository.dart';
@@ -44,5 +45,9 @@ class DashboardController extends GetxController {
   }
 
   @override
-  Future<void> refresh() => load(silent: true);
+  Future<void> refresh() async {
+    // Explicit refresh (pull-to-refresh, app resume): always re-fetch.
+    if (Get.isRegistered<DataCache>()) Get.find<DataCache>().expireAll();
+    await load(silent: true);
+  }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/models/app_user.dart';
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/services/app_services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
@@ -45,7 +46,7 @@ class _StaffViewState extends State<StaffView> {
   Future<void> _invite() async {
     await AppDialogs.showForm<bool>(
       context,
-      title: 'Invite a team member',
+      title: 'Create a team member',
       subtitle: 'Give a colleague access to this workspace with a clear role.',
       child: const InviteStaffDialog(),
     );
@@ -97,7 +98,7 @@ class _StaffViewState extends State<StaffView> {
                 FilledButton.icon(
                   onPressed: _invite,
                   icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                  label: Text('Invite member'.tr),
+                  label: Text('Create account'.tr),
                 ),
             ],
           ),
@@ -128,7 +129,11 @@ class _StaffViewState extends State<StaffView> {
   Widget _buildContent(BuildContext context, bool wide) {
     final members = _members;
     return RefreshIndicator(
-      onRefresh: () => controller.load(silent: true),
+      onRefresh: () async {
+        // Pull-to-refresh always re-fetches from Supabase.
+        Get.find<DataCache>().expireAll();
+        await controller.load(silent: true);
+      },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
@@ -198,7 +203,7 @@ class _StaffViewState extends State<StaffView> {
                             Icons.person_add_alt_1_rounded,
                             size: 18,
                           ),
-                          label: Text('Invite member'.tr),
+                          label: Text('Create account'.tr),
                         )
                       : null,
                 ),

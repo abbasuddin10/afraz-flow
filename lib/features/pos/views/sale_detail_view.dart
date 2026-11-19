@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/services/app_services.dart';
 import '../../../core/services/receipt_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/widgets/app_logo.dart';
+
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/feedback.dart';
 import '../data/sale.dart';
@@ -141,7 +142,13 @@ class _SaleDetailViewState extends State<SaleDetailView> {
           : sale == null
           ? const SizedBox.shrink()
           : RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: () async {
+                // Pull-to-refresh always re-fetches from Supabase.
+                if (Get.isRegistered<DataCache>()) {
+                  Get.find<DataCache>().expireAll();
+                }
+                await _load();
+              },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(18),
@@ -222,8 +229,6 @@ class _InvoiceHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const AppLogoMark(size: 44, radius: 13),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,7 +411,7 @@ class _InvoiceBody extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        // logo spacing removed
                         Text(
                           money(item.lineTotal),
                           style: Theme.of(context).textTheme.bodySmall

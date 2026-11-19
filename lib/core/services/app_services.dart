@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/backend_mode.dart';
+import '../data/cache/data_cache.dart';
 import '../utils/formatters.dart';
 import '../data/data_store.dart';
 import '../models/app_user.dart';
@@ -185,6 +186,11 @@ class SessionService extends GetxService {
     try {
       await _auth.signOut();
       _session.value = null;
+      // Cached rows belong to the signed-in tenant; drop them so the next
+      // sign-in can never read stale cross-tenant data.
+      if (Get.isRegistered<DataCache>()) {
+        Get.find<DataCache>().expireAll();
+      }
       // Leaving the demo returns the next sign-in to the real workspace.
       await _mode?.useCloud();
     } finally {

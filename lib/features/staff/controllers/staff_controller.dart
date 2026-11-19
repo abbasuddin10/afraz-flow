@@ -55,7 +55,7 @@ class StaffController extends GetxController {
           ? 'Welcome123'
           : password.trim();
       showAppMessage(
-        'Invitation added for $email. Temporary password: $tempPassword',
+        'Account created for $email. Temporary password: $tempPassword',
       );
       return true;
     } catch (exception) {

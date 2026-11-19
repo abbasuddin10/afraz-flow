@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/services/app_services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
@@ -76,14 +77,23 @@ class _InventoryViewState extends State<InventoryView> {
   }
 
   Future<void> _scan() async {
-    final code = await Get.toNamed<String>(Routes.scanner);
-    if (code == null || code.isEmpty || !mounted) return;
-    final product = await controller.findByBarcode(code);
-    if (product == null) {
-      showAppMessage('No product matched "$code".', error: true);
-      return;
+    try {
+      final code = await Get.toNamed<String>(Routes.scanner);
+      if (code == null || code.isEmpty || !mounted) return;
+      final product = await controller.findByBarcode(code);
+      if (product == null) {
+        if (!mounted) return;
+        showAppMessage('No product matched "$code".', error: true);
+        return;
+      }
+      _openMovements(product);
+    } catch (exception) {
+      if (!mounted) return;
+      showAppMessage(
+        'Could not open the scanner. You can still search the catalogue.',
+        error: true,
+      );
     }
-    _openMovements(product);
   }
 
   Future<void> _handleAction(String action, Product product) async {
@@ -103,7 +113,11 @@ class _InventoryViewState extends State<InventoryView> {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 960;
     return RefreshIndicator(
-      onRefresh: () => controller.load(silent: true),
+      onRefresh: () async {
+        // Pull-to-refresh always re-fetches from Supabase.
+        Get.find<DataCache>().expireAll();
+        await controller.load(silent: true);
+      },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.all(wide ? 28 : 16),
@@ -258,7 +272,10 @@ class _InventoryViewState extends State<InventoryView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (wide) _buildTable(context, products) else _buildCards(context, products),
+              if (wide)
+                _buildTable(context, products)
+              else
+                _buildCards(context, products),
               const SizedBox(height: 10),
               Text(
                 'Showing ${products.length} of ${controller.products.length} products',
@@ -297,12 +314,14 @@ class _InventoryViewState extends State<InventoryView> {
                   DataCell(
                     Row(
                       children: [
-                        InitialsAvatar(
+                        ProductThumbnail(
                           name: product.name,
+                          imageUrl: product.imageUrl,
                           size: 34,
                           background: product.isLowStock
                               ? AppColors.amber
                               : AppColors.navySoft,
+                          foreground: Colors.white,
                         ),
                         const SizedBox(width: 10),
                         ConstrainedBox(
@@ -338,11 +357,19 @@ class _InventoryViewState extends State<InventoryView> {
                   ),
                   DataCell(Text(product.category)),
                   DataCell(
-                    Text(Formats.currency(product.costPrice, symbol: controller.currency)),
+                    Text(
+                      Formats.currency(
+                        product.costPrice,
+                        symbol: controller.currency,
+                      ),
+                    ),
                   ),
                   DataCell(
                     Text(
-                      Formats.currency(product.salePrice, symbol: controller.currency),
+                      Formats.currency(
+                        product.salePrice,
+                        symbol: controller.currency,
+                      ),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -417,12 +444,14 @@ class _InventoryViewState extends State<InventoryView> {
               onTap: () => _openMovements(product),
               child: Row(
                 children: [
-                  InitialsAvatar(
+                  ProductThumbnail(
                     name: product.name,
+                    imageUrl: product.imageUrl,
                     size: 46,
                     background: product.isLowStock
                         ? AppColors.amber
                         : AppColors.navySoft,
+                    foreground: Colors.white,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -439,9 +468,12 @@ class _InventoryViewState extends State<InventoryView> {
                           '${product.sku} · ${product.category}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                         const SizedBox(height: 7),
                         Row(
@@ -590,7 +622,9 @@ class _CategoryDropdown extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).inputDecorationTheme.fillColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(

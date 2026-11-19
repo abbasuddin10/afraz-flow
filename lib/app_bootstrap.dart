@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -7,12 +9,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/app_config.dart';
 import 'core/data/backend_mode.dart';
+import 'core/data/cache/data_cache.dart';
 import 'core/data/data_store.dart';
 import 'core/data/local_data_store.dart';
 import 'core/data/routing_data_store.dart';
 import 'core/data/supabase_data_store.dart';
 import 'core/platform/desktop_window.dart';
 import 'core/services/app_services.dart';
+import 'core/services/push_notification_service.dart';
 import 'features/assistant/data/assistant_repository.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/briefing/data/briefing_repository.dart';
@@ -73,8 +77,14 @@ class AppBootstrap {
       cloudAvailable: client != null,
       cloudError: initError,
     );
+    // Smart local cache: cloud reads are served from a persistent on-device
+    // cache (Hive) and only re-fetched when data changes or the user pulls
+    // to refresh, keeping Supabase free-tier reads low.
+    final dataCache = await DataCache.create();
     final routingStore = RoutingDataStore(
-      cloud: client == null ? null : SupabaseDataStore(client),
+      cloud: client == null
+          ? null
+          : CachedDataStore(SupabaseDataStore(client), cache: dataCache),
       local: localStore,
       mode: mode,
     );
@@ -99,6 +109,7 @@ class AppBootstrap {
     final session = SessionService(auth, mode: mode);
 
     Get.put<DataStore>(routingStore, permanent: true);
+    Get.put<DataCache>(dataCache, permanent: true);
     Get.put<BackendMode>(mode, permanent: true);
     Get.put<LocalDataStore>(localStore, permanent: true);
     Get.put<PreferencesService>(preferences, permanent: true);
@@ -155,5 +166,10 @@ class AppBootstrap {
       NotificationRepository(store, session, client: client),
       permanent: true,
     );
+    // Real-time mobile push notifications (FCM). Initialisation is
+    // non-blocking so a slow network never delays the first frame.
+    final push = PushNotificationService(routingStore, session);
+    Get.put<PushNotificationService>(push, permanent: true);
+    unawaited(push.initialize());
   }
 }

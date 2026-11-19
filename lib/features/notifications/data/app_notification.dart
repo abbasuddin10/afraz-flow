@@ -29,6 +29,8 @@ class AppNotification {
 
   bool get isUnread => readAt == null;
   bool get isBriefing => kind == 'daily_briefing';
+  bool get isLowStock => kind == 'low_stock';
+  bool get isAlert => isBriefing || isLowStock;
 
   factory AppNotification.fromJson(Map<String, dynamic> json) =>
       AppNotification(

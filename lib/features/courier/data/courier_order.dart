@@ -112,13 +112,18 @@ class CourierOrder {
   final DateTime updatedAt;
   final List<CourierEvent> events;
 
+  /// All major Bangladeshi courier services offered in the delivery module.
   static const List<String> partners = [
-    'TCS',
-    'Leopards Courier',
-    'M&P',
-    'Pakistan Post',
-    'BlueEX',
-    'Trax',
+    'Steadfast Courier',
+    'Pathao Courier',
+    'RedX',
+    'Paperfly',
+    'Sundarban Courier Service',
+    'SA Paribahan',
+    'eCourier',
+    'Delivery Tiger',
+    'Janani Express',
+    'Korotoa Courier Service',
     'Other',
   ];
 
@@ -142,7 +147,7 @@ class CourierOrder {
       customerPhone: asString(json['customer_phone']),
       address: asString(json['address']),
       city: asString(json['city']),
-      courierPartner: asString(json['courier_partner'], 'TCS'),
+      courierPartner: asString(json['courier_partner'], 'Steadfast Courier'),
       trackingNumber: asNullableString(json['tracking_number']),
       status: CourierStatus.fromValue(json['status']),
       codAmount: asDouble(json['cod_amount']),

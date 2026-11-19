@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/services/app_services.dart';
 import '../../../core/services/receipt_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -31,9 +32,17 @@ class _PosViewState extends State<PosView> {
   }
 
   Future<void> _scan() async {
-    final code = await Get.toNamed<String>(Routes.scanner);
-    if (code == null || code.isEmpty || !mounted) return;
-    await controller.addByBarcode(code);
+    try {
+      final code = await Get.toNamed<String>(Routes.scanner);
+      if (code == null || code.isEmpty || !mounted) return;
+      await controller.addByBarcode(code);
+    } catch (exception) {
+      if (!mounted) return;
+      showAppMessage(
+        'Could not open the scanner. You can still search for the product.',
+        error: true,
+      );
+    }
   }
 
   Future<void> _addCustomer() async {
@@ -86,32 +95,21 @@ class _PosViewState extends State<PosView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PageHeader(
-                eyebrow: 'Checkout',
-                title: 'Point of Sale',
-                subtitle:
-                    'Build a basket, take payment and print a receipt in seconds.',
-                actions: [
-                  OutlinedButton.icon(
-                    onPressed: _scan,
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                    label: Text('Scan'.tr),
-                  ),
-                  if (!wide)
-                    Obx(
-                      () => FilledButton.icon(
-                        onPressed: _openCart,
-                        icon: const Icon(Icons.shopping_bag_outlined, size: 18),
-                        label: Text(
-                          controller.cart.isEmpty
-                              ? 'Cart'
-                              : 'Cart (${controller.cartCount})',
-                        ),
-                      ),
+              if (wide)
+                PageHeader(
+                  eyebrow: 'Checkout',
+                  title: 'Point of Sale',
+                  subtitle:
+                      'Build a basket, take payment and print a receipt in seconds.',
+                  actions: [
+                    OutlinedButton.icon(
+                      onPressed: _scan,
+                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                      label: Text('Scan'.tr),
                     ),
-                ],
-              ),
-              const SizedBox(height: 18),
+                  ],
+                ),
+              if (wide) const SizedBox(height: 18),
               Obx(() {
                 if (controller.loading.value) {
                   return const Expanded(
@@ -134,9 +132,50 @@ class _PosViewState extends State<PosView> {
                   return Expanded(
                     child: Column(
                       children: [
-                        _CartBar(onTap: _openCart),
+                        Row(
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _scan,
+                              icon: const Icon(
+                                Icons.qr_code_scanner_rounded,
+                                size: 18,
+                              ),
+                              label: Text('Scan'.tr),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Obx(
+                                () => FilledButton.icon(
+                                  onPressed: _openCart,
+                                  icon: const Icon(
+                                    Icons.shopping_bag_outlined,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    controller.cart.isEmpty
+                                        ? 'Cart'
+                                        : 'Cart (${controller.cartCount})',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 12),
-                        Expanded(child: _CatalogPane(controller: controller, search: _search)),
+                        AppSearchField(
+                          width: double.infinity,
+                          hint: 'Search products, SKU or scan a barcode',
+                          controller: _search,
+                          onChanged: controller.setSearch,
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: _CatalogPane(
+                            controller: controller,
+                            search: _search,
+                            showSearch: false,
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -146,7 +185,10 @@ class _PosViewState extends State<PosView> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: _CatalogPane(controller: controller, search: _search),
+                        child: _CatalogPane(
+                          controller: controller,
+                          search: _search,
+                        ),
                       ),
                       const SizedBox(width: 18),
                       SizedBox(
@@ -169,146 +211,86 @@ class _PosViewState extends State<PosView> {
 }
 
 /// A compact always-visible summary used on mobile to open the cart sheet.
-class _CartBar extends StatelessWidget {
-  const _CartBar({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = Get.find<PosController>();
-    return AppCard(
-      padding: EdgeInsets.zero,
-      onTap: onTap,
-      child: Obx(
-        () => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.teal.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: const Icon(
-                  Icons.shopping_bag_outlined,
-                  size: 19,
-                  color: AppColors.teal,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      controller.cart.isEmpty
-                          ? 'Your cart is empty'
-                          : '${controller.cartCount} item${controller.cartCount == 1 ? '' : 's'} in cart',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    Text(
-                      controller.cart.isEmpty
-                          ? 'Tap a product to start a sale'
-                          : 'Tap to review & take payment',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    Formats.currency(
-                      controller.total,
-                      symbol: controller.currency,
-                    ),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, size: 18),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _CatalogPane extends StatelessWidget {
-  const _CatalogPane({required this.controller, required this.search});
+  const _CatalogPane({
+    required this.controller,
+    required this.search,
+    this.showSearch = true,
+  });
 
   final PosController controller;
   final TextEditingController search;
+  final bool showSearch;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 620;
-            return Row(
-              children: [
-                Expanded(
-                  child: AppSearchField(
-                    width: double.infinity,
-                    hint: 'Search products, SKU or scan a barcode',
-                    controller: search,
-                    onChanged: controller.setSearch,
+        if (showSearch)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 620;
+              return Row(
+                children: [
+                  Expanded(
+                    child: AppSearchField(
+                      width: double.infinity,
+                      hint: 'Search products, SKU or scan a barcode',
+                      controller: search,
+                      onChanged: controller.setSearch,
+                    ),
                   ),
-                ),
-                if (!narrow) ...[
-                  const SizedBox(width: 10),
-                  Obx(
-                    () => Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).inputDecorationTheme.fillColor,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: controller.categories.contains(controller.category.value)
-                              ? controller.category.value
-                              : 'All',
-                          isDense: true,
-                          style: Theme.of(context).textTheme.bodySmall,
-                          icon: const Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 18,
+                  if (!narrow) ...[
+                    const SizedBox(width: 10),
+                    Obx(
+                      () => Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).inputDecorationTheme.fillColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
                           ),
-                          items: [
-                            for (final value in controller.categories)
-                              DropdownMenuItem(value: value, child: Text(value)),
-                          ],
-                          onChanged: (value) {
-                            if (value != null) controller.setCategory(value);
-                          },
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value:
+                                controller.categories.contains(
+                                  controller.category.value,
+                                )
+                                ? controller.category.value
+                                : 'All',
+                            isDense: true,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                            ),
+                            items: [
+                              for (final value in controller.categories)
+                                DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) controller.setCategory(value);
+                            },
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 12),
+              );
+            },
+          ),
+        if (showSearch) const SizedBox(height: 12),
         Obx(
           () => SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -329,34 +311,59 @@ class _CatalogPane extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: Obx(() {
-            final products = controller.filteredProducts;
-            if (products.isEmpty) {
-              return AppCard(
-                child: EmptyState(
-                  icon: Icons.inventory_2_outlined,
-                  title: 'No products match this view',
-                  message:
-                      'Try another search or category. Products added in '
-                      'Inventory appear here instantly.',
+          child: RefreshIndicator(
+            onRefresh: () async {
+              // Pull-to-refresh always re-fetches from Supabase.
+              Get.find<DataCache>().expireAll();
+              await controller.load(silent: true);
+            },
+            child: Obx(() {
+              final products = controller.filteredProducts;
+              if (products.isEmpty) {
+                return CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: AppCard(
+                        child: EmptyState(
+                          icon: Icons.inventory_2_outlined,
+                          title: 'No products match this view',
+                          message:
+                              'Try another search or category. Products added '
+                              'in Inventory appear here instantly. Pull down to '
+                              'refresh from the cloud.',
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              final isMobile = MediaQuery.sizeOf(context).width < 760;
+              return GridView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 18),
+                gridDelegate: isMobile
+                    ? const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisExtent: 152,
+                        crossAxisSpacing: 6,
+                        mainAxisSpacing: 8,
+                      )
+                    : const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 210,
+                        mainAxisExtent: 214,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                      ),
+                itemCount: products.length,
+                itemBuilder: (context, index) => _ProductCard(
+                  product: products[index],
+                  onTap: () => controller.addProduct(products[index]),
                 ),
               );
-            }
-            return GridView.builder(
-              padding: const EdgeInsets.only(bottom: 18),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 230,
-                mainAxisExtent: 176,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: products.length,
-              itemBuilder: (context, index) => _ProductCard(
-                product: products[index],
-                onTap: () => controller.addProduct(products[index]),
-              ),
-            );
-          }),
+            }),
+          ),
         ),
       ],
     );
@@ -372,87 +379,186 @@ class _ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<PosController>();
+    final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 760;
     final out = product.isOutOfStock;
+    final radius = BorderRadius.circular(compact ? 11 : 14);
+    final priceColor = theme.brightness == Brightness.dark
+        ? Colors.white
+        : AppColors.navy;
+
     return Opacity(
-      opacity: out ? 0.6 : 1,
-      child: AppCard(
-        padding: const EdgeInsets.all(14),
-        onTap: out ? null : onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                InitialsAvatar(
-                  name: product.name,
-                  size: 34,
-                  background: out ? AppColors.inkMuted : AppColors.navySoft,
-                ),
-                const Spacer(),
-                StatusPill(
-                  label: out ? 'Out' : product.stockLabel,
-                  color: out
-                      ? AppColors.red
-                      : product.isLowStock
-                      ? AppColors.amber
-                      : AppColors.green,
-                  dense: true,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              product.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                height: 1.2,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              product.category,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    Formats.currency(
-                      product.salePrice,
-                      symbol: controller.currency,
+      opacity: out ? 0.62 : 1,
+      child: Material(
+        color: theme.cardTheme.color,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: out ? null : onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The photo keeps a fixed, compact height so the remaining space
+              // is reserved for the product name, which must stay readable.
+              SizedBox(
+                // height: compact ? 88 : 116,
+                height: compact ? 75 : 100,
+
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ProductImage(
+                      name: product.name,
+                      imageUrl: product.imageUrl,
+                      fit: BoxFit.fill,
+                      background: out
+                          ? theme.colorScheme.surfaceContainerHigh
+                          : null,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.navy,
+                    Positioned(
+                      top: compact ? 5 : 8,
+                      right: compact ? 5 : 8,
+                      child: _StockBadge(
+                        label: out
+                            ? (compact ? 'Out' : 'Out of stock')
+                            : product.stockLabel,
+                        color: out
+                            ? AppColors.red
+                            : product.isLowStock
+                            ? AppColors.amber
+                            : AppColors.green,
+                        compact: compact,
+                      ),
                     ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 6 : 10,
+                    compact ? 4 : 8,
+                    compact ? 4 : 8,
+                    compact ? 4 : 8,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: compact ? 2 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            (compact
+                                    ? theme.textTheme.labelSmall
+                                    : theme.textTheme.titleSmall)
+                                ?.copyWith(
+                                  height: 1.15,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: compact ? 10 : null,
+                                ),
+                      ),
+                      SizedBox(height: compact ? 5 : 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                Formats.currency(
+                                  product.salePrice,
+                                  symbol: controller.currency,
+                                ),
+                                maxLines: 1,
+                                style:
+                                    (compact
+                                            ? theme.textTheme.labelMedium
+                                            : theme.textTheme.titleSmall)
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: priceColor,
+                                          fontSize: compact ? 11.5 : null,
+                                        ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: compact ? 3 : 6),
+                          Container(
+                            width: compact ? 20 : 26,
+                            height: compact ? 20 : 26,
+                            decoration: BoxDecoration(
+                              color: out
+                                  ? AppColors.inkMuted.withValues(alpha: 0.15)
+                                  : AppColors.teal.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(
+                                compact ? 6 : 8,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.add_rounded,
+                              size: compact ? 14 : 17,
+                              color: out ? AppColors.inkMuted : AppColors.teal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: out
-                        ? AppColors.inkMuted.withValues(alpha: 0.15)
-                        : AppColors.teal.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.add_rounded,
-                    size: 17,
-                    color: out ? AppColors.inkMuted : AppColors.teal,
-                  ),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A compact stock overlay pinned to the top corner of a product photo.
+class _StockBadge extends StatelessWidget {
+  const _StockBadge({
+    required this.label,
+    required this.color,
+    required this.compact,
+  });
+
+  final String label;
+  final Color color;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(maxWidth: compact ? 70 : 110),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 5 : 7,
+        vertical: compact ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(99),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: compact ? 8.5 : 10,
+          fontWeight: FontWeight.w700,
+          height: 1.15,
         ),
       ),
     );
@@ -509,7 +615,9 @@ class _CartPanelState extends State<_CartPanel> {
               ),
               Obx(
                 () => TextButton(
-                  onPressed: controller.cart.isEmpty ? null : controller.clearCart,
+                  onPressed: controller.cart.isEmpty
+                      ? null
+                      : controller.clearCart,
                   child: Text('Clear'.tr),
                 ),
               ),
@@ -518,9 +626,11 @@ class _CartPanelState extends State<_CartPanel> {
           const SizedBox(height: 8),
           Obx(
             () => DropdownButtonFormField<String?>(
-              value: controller.customers.any(
-                (account) => account.id == controller.selectedCustomerId.value,
-              )
+              value:
+                  controller.customers.any(
+                    (account) =>
+                        account.id == controller.selectedCustomerId.value,
+                  )
                   ? controller.selectedCustomerId.value
                   : null,
               isExpanded: true,
@@ -532,7 +642,10 @@ class _CartPanelState extends State<_CartPanel> {
                     : IconButton(
                         tooltip: 'Add customer',
                         onPressed: widget.onAddCustomer,
-                        icon: const Icon(Icons.person_add_alt_1_rounded, size: 19),
+                        icon: const Icon(
+                          Icons.person_add_alt_1_rounded,
+                          size: 19,
+                        ),
                       ),
               ),
               items: [
@@ -612,7 +725,9 @@ class _CartPanelState extends State<_CartPanel> {
                     Expanded(
                       child: _SyncedField(
                         label: controller.isCredit ? 'Paid now' : 'Amount paid',
-                        hint: controller.isCredit ? '0' : total.toStringAsFixed(0),
+                        hint: controller.isCredit
+                            ? '0'
+                            : total.toStringAsFixed(0),
                         value: controller.paidInput.value,
                         onChanged: controller.setPaid,
                         icon: Icons.payments_outlined,
@@ -642,7 +757,8 @@ class _CartPanelState extends State<_CartPanel> {
                         ChoiceChip(
                           label: Text(method.label),
                           selected: controller.paymentMethod.value == method,
-                          onSelected: (_) => controller.setPaymentMethod(method),
+                          onSelected: (_) =>
+                              controller.setPaymentMethod(method),
                         ),
                     ],
                   ),
@@ -681,8 +797,8 @@ class _CartPanelState extends State<_CartPanel> {
                   () => SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: controller.processing.value ||
-                              controller.cart.isEmpty
+                      onPressed:
+                          controller.processing.value || controller.cart.isEmpty
                           ? null
                           : _checkout,
                       style: FilledButton.styleFrom(
@@ -697,7 +813,10 @@ class _CartPanelState extends State<_CartPanel> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Icon(Icons.check_circle_outline_rounded, size: 19),
+                          : const Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 19,
+                            ),
                       label: Text(
                         controller.cart.isEmpty
                             ? 'Add products to charge'
@@ -728,9 +847,9 @@ class _CartLineTile extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant.withValues(
-              alpha: 0.6,
-            ),
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withValues(alpha: 0.6),
           ),
         ),
       ),
@@ -744,9 +863,9 @@ class _CartLineTile extends StatelessWidget {
                   line.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 1),
                 Text(
@@ -777,9 +896,9 @@ class _CartLineTile extends StatelessWidget {
             child: Text(
               Formats.currency(line.lineTotal, symbol: controller.currency),
               textAlign: TextAlign.end,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           IconButton(
@@ -858,9 +977,9 @@ class _QtyInputFieldState extends State<_QtyInputField> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textAlign: TextAlign.center,
       onChanged: (value) => widget.controller.setQuantity(widget.line, value),
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+      style: Theme.of(
+        context,
+      ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
       decoration: const InputDecoration(
         isDense: true,
         contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 4),
@@ -995,9 +1114,7 @@ class _SyncedFieldState extends State<_SyncedField> {
         labelText: widget.label,
         hintText: widget.hint,
         isDense: true,
-        prefixIcon: widget.icon == null
-            ? null
-            : Icon(widget.icon, size: 18),
+        prefixIcon: widget.icon == null ? null : Icon(widget.icon, size: 18),
       ),
     );
   }
@@ -1118,7 +1235,10 @@ class _NewCustomerDialogState extends State<_NewCustomerDialog> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                          : const Icon(
+                              Icons.person_add_alt_1_rounded,
+                              size: 18,
+                            ),
                       label: Text('Add customer'.tr),
                     ),
                   ],
@@ -1280,10 +1400,7 @@ class _SaleCompleteDialogState extends State<_SaleCompleteDialog> {
                 child: FilledButton.icon(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    Get.toNamed<dynamic>(
-                      Routes.saleDetail,
-                      arguments: sale,
-                    );
+                    Get.toNamed<dynamic>(Routes.saleDetail, arguments: sale);
                   },
                   icon: const Icon(Icons.receipt_long_outlined, size: 18),
                   label: Text("View invoice · ${session.currencySymbol}"),

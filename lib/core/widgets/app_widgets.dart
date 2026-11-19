@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -193,6 +196,220 @@ class InitialsAvatar extends StatelessWidget {
   }
 }
 
+/// Decoded demo-mode data URLs, cached by their full URL so repeated rebuilds
+/// reuse the same [Uint8List] (and therefore Flutter's decoded image cache).
+final Map<String, Uint8List> _dataImageCache = <String, Uint8List>{};
+
+/// Shows a product photo when one is available and a tidy placeholder icon
+/// otherwise. The widget always occupies exactly [size] x [size] so it can be
+/// dropped into compact cards, tables and lists without affecting layout.
+class ProductThumbnail extends StatelessWidget {
+  const ProductThumbnail({
+    super.key,
+    required this.name,
+    this.imageUrl,
+    this.size = 40,
+    this.background,
+    this.foreground,
+    this.radius,
+    this.icon = Icons.inventory_2_outlined,
+  });
+
+  final String name;
+  final String? imageUrl;
+  final double size;
+  final Color? background;
+  final Color? foreground;
+  final BorderRadius? radius;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final corners = radius ?? BorderRadius.circular(size * 0.3);
+    final url = imageUrl?.trim();
+    if (url == null || url.isEmpty) {
+      return _placeholder(corners);
+    }
+    return Semantics(
+      label: name,
+      image: true,
+      child: ClipRRect(
+        borderRadius: corners,
+        child: url.startsWith('data:image')
+            ? _memoryImage(url, corners)
+            : Image.network(
+                url,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _placeholder(corners),
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return _loading();
+                },
+              ),
+      ),
+    );
+  }
+
+  Widget _memoryImage(String url, BorderRadius corners) {
+    try {
+      final bytes = _dataImageCache.putIfAbsent(
+        url,
+        () => base64Decode(url.substring(url.indexOf(',') + 1)),
+      );
+      return Image.memory(
+        bytes,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _placeholder(corners),
+      );
+    } catch (_) {
+      return _placeholder(corners);
+    }
+  }
+
+  Widget _loading() {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      color: background ?? AppColors.navySoft.withValues(alpha: 0.12),
+      child: SizedBox(
+        width: size * 0.32,
+        height: size * 0.32,
+        child: const CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+
+  Widget _placeholder(BorderRadius corners) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background ?? AppColors.navySoft.withValues(alpha: 0.12),
+        borderRadius: corners,
+      ),
+      child: Icon(
+        icon,
+        size: size * 0.48,
+        color: foreground ?? AppColors.navySoft,
+      ),
+    );
+  }
+}
+
+/// A full-bleed product photo for cards and tiles.
+///
+/// Unlike [ProductThumbnail] this widget fills whatever space its parent gives
+/// it, which makes it suitable for the large image area at the top of the POS
+/// product cards. When no photo exists it renders a quiet placeholder icon so
+/// the card never collapses or shows a broken image.
+class ProductImage extends StatelessWidget {
+  const ProductImage({
+    super.key,
+    required this.name,
+    this.imageUrl,
+    this.fit = BoxFit.cover,
+    this.background,
+    this.foreground,
+    this.icon = Icons.inventory_2_outlined,
+  });
+
+  final String name;
+  final String? imageUrl;
+  final BoxFit fit;
+  final Color? background;
+  final Color? foreground;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl?.trim();
+    if (url == null || url.isEmpty) return _placeholder(context);
+    return Semantics(
+      label: name,
+      image: true,
+      child: url.startsWith('data:image')
+          ? _memoryImage(context, url)
+          : Image.network(
+              url,
+              width: double.infinity,
+              height: double.infinity,
+              fit: fit,
+              errorBuilder: (_, _, _) => _placeholder(context),
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return _loading(context);
+              },
+            ),
+    );
+  }
+
+  Widget _memoryImage(BuildContext context, String url) {
+    try {
+      final bytes = _dataImageCache.putIfAbsent(
+        url,
+        () => base64Decode(url.substring(url.indexOf(',') + 1)),
+      );
+      return Image.memory(
+        bytes,
+        width: double.infinity,
+        height: double.infinity,
+        fit: fit,
+        errorBuilder: (_, _, _) => _placeholder(context),
+      );
+    } catch (_) {
+      return _placeholder(context);
+    }
+  }
+
+  Widget _placeholder(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = background ?? theme.colorScheme.surfaceContainerHigh;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final shortest = constraints.biggest.shortestSide;
+        final iconSize = shortest.isFinite
+            ? (shortest * 0.34).clamp(18.0, 42.0)
+            : 28.0;
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: color,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: iconSize,
+            color:
+                foreground ??
+                theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _loading(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _placeholder(context),
+        Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: const CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class StatusPill extends StatelessWidget {
   const StatusPill({
     super.key,
@@ -302,10 +519,7 @@ class EmptyState extends StatelessWidget {
                 ),
               ),
             ),
-            if (action != null) ...[
-              const SizedBox(height: 18),
-              action!,
-            ],
+            if (action != null) ...[const SizedBox(height: 18), action!],
           ],
         ),
       ),
@@ -612,15 +826,15 @@ class ResponsiveGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxWidth;
-        var columns = ((available + spacing) / (minItemWidth + spacing)).floor();
+        var columns = ((available + spacing) / (minItemWidth + spacing))
+            .floor();
         columns = columns.clamp(1, maxColumns);
         final width = (available - spacing * (columns - 1)) / columns;
         return Wrap(
           spacing: spacing,
           runSpacing: spacing,
           children: [
-            for (final child in children)
-              SizedBox(width: width, child: child),
+            for (final child in children) SizedBox(width: width, child: child),
           ],
         );
       },

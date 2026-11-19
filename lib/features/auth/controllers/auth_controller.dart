@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../core/config/app_config.dart';
 import '../../../../core/data/backend_mode.dart';
 import '../../../../core/services/app_services.dart';
+import '../../../../core/services/push_notification_service.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/feedback.dart';
@@ -70,6 +73,12 @@ class AuthController extends GetxController {
       _session.adopt(value);
       if (!value.isDemo) {
         await _preferences.setLastEmail(value.user.email);
+        // Attach this device's FCM token to the new account immediately. The
+        // notification controller also does this, but calling it here makes
+        // registration deterministic even before the shell/bell is built.
+        if (Get.isRegistered<PushNotificationService>()) {
+          unawaited(Get.find<PushNotificationService>().onSessionReady());
+        }
       }
       Get.offAllNamed(Routes.shell);
       return true;
@@ -110,6 +119,12 @@ class AuthController extends GetxController {
       _session.adopt(value);
       if (!value.isDemo) {
         await _preferences.setLastEmail(value.user.email);
+        // Attach this device's FCM token to the new account immediately. The
+        // notification controller also does this, but calling it here makes
+        // registration deterministic even before the shell/bell is built.
+        if (Get.isRegistered<PushNotificationService>()) {
+          unawaited(Get.find<PushNotificationService>().onSessionReady());
+        }
       }
       Get.offAllNamed(Routes.shell);
       return true;

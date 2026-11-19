@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 
 /// The Afraz Flow brand mark, shared by the splash, auth and app shell surfaces.
 ///
-/// The source artwork lives in `assets/images/app_logo_mark.png` and is
-/// generated from `assets/images/app_logo.jpg` so every platform and every
-/// in-app logo use the same asset.
+/// The single source artwork lives in `assets/images/logo.jpg` so every
+/// platform and every in-app logo use the same asset.
 class AppLogoMark extends StatelessWidget {
   const AppLogoMark({
     super.key,
@@ -13,7 +12,7 @@ class AppLogoMark extends StatelessWidget {
     this.shadow = false,
   });
 
-  static const String assetPath = 'assets/images/app_logo_mark.png';
+  static const String assetPath = 'assets/images/logo.jpg';
 
   final double size;
 

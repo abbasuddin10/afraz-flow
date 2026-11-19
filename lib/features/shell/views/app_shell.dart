@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -29,11 +31,37 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   NavigationController get nav => Get.find<NavigationController>();
   SessionService get session => Get.find<SessionService>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Populate the sidebar badges as soon as the shell is visible. The page
+    // controllers load themselves through `onInit`.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(nav.refreshBadges(silent: true));
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Coming back from the background should show fresh Supabase data,
+      // including changes made on another device.
+      unawaited(nav.refreshAll());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -180,28 +208,27 @@ class _AppShellState extends State<AppShell> {
               ],
             ),
           ),
+          // The two alert options are always available in the web AppBar so
+          // the user can jump to Inventory/Courier even when nothing is
+          // currently pending. They stay live through the outer Obx.
           Obx(
-            () => nav.lowStockCount.value > 0
-                ? _AlertChip(
-                    icon: Icons.inventory_2_outlined,
-                    label: '${nav.lowStockCount.value} low stock',
-                    color: AppColors.amber,
-                    onTap: () => nav.go(AppSection.inventory),
-                  )
-                : const SizedBox.shrink(),
+            () => _AlertChip(
+              icon: Icons.inventory_2_outlined,
+              label: '${nav.lowStockCount.value} low stock',
+              color: AppColors.amber,
+              onTap: () => nav.go(AppSection.inventory),
+            ),
           ),
           Obx(
-            () => nav.pendingOrders.value > 0
-                ? Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: _AlertChip(
-                      icon: Icons.local_shipping_outlined,
-                      label: '${nav.pendingOrders.value} to ship',
-                      color: AppColors.blue,
-                      onTap: () => nav.go(AppSection.courier),
-                    ),
-                  )
-                : const SizedBox.shrink(),
+            () => Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: _AlertChip(
+                icon: Icons.local_shipping_outlined,
+                label: '${nav.pendingOrders.value} to ship',
+                color: AppColors.blue,
+                onTap: () => nav.go(AppSection.courier),
+              ),
+            ),
           ),
           const SizedBox(width: 14),
           const NotificationBell(),

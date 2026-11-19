@@ -652,7 +652,7 @@ class _RevenueChart extends StatelessWidget {
                   meta: meta,
                   space: 8,
                   child: Text(
-                    Formats.shortDate(points[index].date),
+                    (points[index].label ?? Formats.shortDate(points[index].date)),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                       fontSize: 9,
@@ -700,7 +700,7 @@ class _RevenueChart extends StatelessWidget {
     color: color,
     barWidth: 2.4,
     isStrokeCapRound: true,
-    dotData: const FlDotData(show: false),
+    dotData: FlDotData(show: spots.length <= 1),
     belowBarData: BarAreaData(
       show: fill,
       gradient: LinearGradient(
@@ -857,6 +857,12 @@ class _TopProductRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 9),
+            ProductThumbnail(
+              name: product.name,
+              imageUrl: product.imageUrl,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 product.name,
@@ -1057,12 +1063,14 @@ class _LowStockCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
                   children: [
-                    InitialsAvatar(
+                    ProductThumbnail(
                       name: product.name,
+                      imageUrl: product.imageUrl,
                       size: 34,
                       background: product.isOutOfStock
                           ? AppColors.red
                           : AppColors.amber,
+                      foreground: Colors.white,
                     ),
                     const SizedBox(width: 11),
                     Expanded(

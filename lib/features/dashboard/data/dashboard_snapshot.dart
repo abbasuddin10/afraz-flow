@@ -19,11 +19,13 @@ class ChartPoint {
     required this.date,
     required this.revenue,
     required this.expenses,
+    this.label,
   });
 
   final DateTime date;
   final double revenue;
   final double expenses;
+  final String? label;
 }
 
 class TopProduct {
@@ -31,11 +33,13 @@ class TopProduct {
     required this.name,
     required this.quantity,
     required this.revenue,
+    this.imageUrl,
   });
 
   final String name;
   final double quantity;
   final double revenue;
+  final String? imageUrl;
 }
 
 class DashboardSnapshot {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/data/cache/data_cache.dart';
 import '../../../core/models/account.dart';
 import '../../../core/models/ledger_entry.dart';
 import '../../../core/theme/app_colors.dart';
@@ -818,7 +819,13 @@ class _AccountStatementSheetState extends State<AccountStatementSheet> {
                       'appear here.',
                 )
               : RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () async {
+                    // Pull-to-refresh always re-fetches from Supabase.
+                    if (Get.isRegistered<DataCache>()) {
+                      Get.find<DataCache>().expireAll();
+                    }
+                    await _load();
+                  },
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                     itemCount: _entries.length,

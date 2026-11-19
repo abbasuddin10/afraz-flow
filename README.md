@@ -136,16 +136,18 @@ each once. The schema migration creates:
 
 ### 3. Deploy the staff invitation function
 
-Staff invitations use a server-side Edge Function so the service-role key never
-reaches the client. Remote invites create the Supabase auth account with the
-temporary password entered by the admin (or `Welcome123` when none is entered),
-send a confirmation email, and add the membership. The cashier confirms their
-email, then signs in with that temporary password.
+Staff accounts are created by a server-side Edge Function so the service-role key
+never reaches the client. Remote creation creates the Supabase auth account with
+the temporary password entered by the admin (or `Welcome123` when none is
+entered), marks the email as confirmed immediately (`email_confirm: true`),
+and adds the membership. The staff member signs in right away with that
+temporary password — no email verification or invite link is required.
 
 ```bash
-supabase functions deploy invite-staff
-# Optional: set the URL that invite emails return to.
-supabase secrets set APP_URL=https://app.example.com
+# If the Supabase CLI is not installed, use `npx supabase ...` instead.
+npx supabase login
+npx supabase link --project-ref jryuyaehhpfbxpvrzdeg
+npx supabase functions deploy invite-staff
 ```
 
 Hosted projects automatically provide `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
